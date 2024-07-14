@@ -371,4 +371,6 @@ class SoundManager(QDialog):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = MyApp()
-    sys.exit(app.exec_())
+    # sys.exit(app.exec_())
+    ex.show()
+    app.exec_()
