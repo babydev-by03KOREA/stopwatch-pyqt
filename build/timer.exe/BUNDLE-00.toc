@@ -1,3 +1,0 @@
-([('timer.exe',
-   '/Users/parkhyeongju/PycharmProjects/customTimer/dist/timer.exe',
-   'EXECUTABLE')],)

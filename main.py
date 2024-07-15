@@ -2,27 +2,39 @@ import sys
 import threading
 import json
 import os
+import shutil  # Importing shutil for file operations
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QTimeEdit, QComboBox, QListWidget, QListWidgetItem, QMessageBox, QDesktopWidget,
                              QSpacerItem, QSizePolicy, QMenuBar, QColorDialog, QLineEdit, QFileDialog, QInputDialog,
-                             QDialog)
-from PyQt5.QtCore import QTimer, Qt, QTime, QElapsedTimer
+                             QDialog, QAction, QActionGroup)
+from PyQt5.QtCore import QTimer, Qt, QTime, QElapsedTimer, QStandardPaths
 import pygame
 
+def resource_path(relative_path):
+    """개발 및 PyInstaller에 대해 리소스의 절대 경로를 가져옵니다."""
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 class MyApp(QMainWindow):
     def __init__(self):
         super().__init__()
         pygame.mixer.init()  # Initialize the mixer module for pygame
-        self.stopped_background_color = 'red'
-        self.running_background_color = 'green'
-        self.current_background_color = self.stopped_background_color
+        self.background_color = 'black'
+        self.text_color = 'red'
         self.sounds = []
-        self.sounds_file = "sounds.json"
-        self.default_sounds_folder = "sounds"
+        self.sounds_file = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "sounds.json")  # Updated path
+        # self.default_sounds_folder = os.path.join(os.path.dirname(__file__), "sounds")  # Default sounds folder
+        self.default_sounds_folder = resource_path("sounds")
+        self.user_sounds_folder = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "user_sounds")  # User sounds folder
         self.is_timer_mode = True
+        self.setup_sound_folders()  # Set up sound folders
         self.load_sounds()
+        self.time_format = 'mm:ss'
         self.initUI()
+
+    def setup_sound_folders(self):
+        if not os.path.exists(self.user_sounds_folder):
+            os.makedirs(self.user_sounds_folder)
 
     def load_sounds(self):
         # Load existing sounds from JSON file
@@ -59,14 +71,14 @@ class MyApp(QMainWindow):
 
         # Create the timer container with the specified background color
         self.timer_container = QWidget(self.centralWidget)
-        self.timer_container.setStyleSheet(f"background-color: {self.current_background_color};")
         self.timer_container_layout = QVBoxLayout(self.timer_container)
 
         self.time_input = QTimeEdit(QTime(0, 0, 0), self.timer_container)
         self.time_input.setAlignment(Qt.AlignCenter)
         self.time_input.setDisplayFormat("HH:mm:ss")
-        self.time_input.setStyleSheet("font-size: 100px; height: 100px;")
-        self.time_input.setFixedHeight(100)  # Fix the height to 100px
+        self.time_input.setStyleSheet("font-size: 300px; height: 300px; background-color: black; color: red;")
+        self.time_input.setFixedHeight(300)  # Fix the height to 100px
+        self.set_time_format(self.time_format)
 
         # Add the time input to the timer container layout and center it
         self.update_spacers()
@@ -88,26 +100,33 @@ class MyApp(QMainWindow):
 
         self.alarm_layout = QHBoxLayout()
 
-        alarm_time_label = QLabel('알람 종료 전 시간 (HH:mm:ss):', self)
-        alarm_time_label.setStyleSheet("font-size: 20px;")
-        self.alarm_layout.addWidget(alarm_time_label)
+        start_alarm_label = QLabel('시작 알람:', self)
+        start_alarm_label.setStyleSheet("font-size: 20px;")
+        self.alarm_layout.addWidget(start_alarm_label)
 
-        self.alarm_time_input = QTimeEdit(QTime(0, 0, 0), self)
-        self.alarm_time_input.setDisplayFormat("HH:mm:ss")
-        self.alarm_time_input.setStyleSheet("font-size: 20px;")
-        self.alarm_layout.addWidget(self.alarm_time_input)
+        self.start_alarm_input = QComboBox(self)
+        self.start_alarm_input.setStyleSheet("font-size: 20px;")
+        self.alarm_layout.addWidget(self.start_alarm_input)
 
-        self.alarm_sound_input = QComboBox(self)
-        self.alarm_sound_input.setStyleSheet("font-size: 20px;")
-        self.update_alarm_sounds()
-        self.alarm_layout.addWidget(self.alarm_sound_input)
+        one_minute_before_label = QLabel('종료 1분 전 알람:', self)
+        one_minute_before_label.setStyleSheet("font-size: 20px;")
+        self.alarm_layout.addWidget(one_minute_before_label)
 
-        self.add_alarm_button = QPushButton('알람 추가', self)
-        self.add_alarm_button.setStyleSheet("font-size: 20px;")
-        self.add_alarm_button.clicked.connect(self.add_alarm)
-        self.alarm_layout.addWidget(self.add_alarm_button)
+        self.one_minute_before_input = QComboBox(self)
+        self.one_minute_before_input.setStyleSheet("font-size: 20px;")
+        self.alarm_layout.addWidget(self.one_minute_before_input)
+
+        end_alarm_label = QLabel('종료 알람:', self)
+        end_alarm_label.setStyleSheet("font-size: 20px;")
+        self.alarm_layout.addWidget(end_alarm_label)
+
+        self.end_alarm_input = QComboBox(self)
+        self.end_alarm_input.setStyleSheet("font-size: 20px;")
+        self.alarm_layout.addWidget(self.end_alarm_input)
 
         self.main_layout.addLayout(self.alarm_layout)
+
+        self.update_alarm_sounds()  # Populate the alarm sounds combo boxes
 
         self.alarm_list = QListWidget(self)
         self.alarm_list.setStyleSheet("font-size: 20px;")
@@ -117,11 +136,23 @@ class MyApp(QMainWindow):
         self.setWindowTitle('카운트다운 알람')
         self.resize_to_70_percent()
         self.create_menu()
-        self.update_background_color(self.current_background_color)
         self.show()
 
         self.time_left = 0
         self.alarms = []
+
+    def validate_time_input(self):
+        text = self.time_input.text()
+        if self.time_format == 'mm:ss':
+            parts = text.split(':')
+            if len(parts) != 2 or not all(part.isdigit() for part in parts):
+                QMessageBox.warning(self, 'Error', '올바른 시간 형식이 아닙니다. (mm:ss)')
+                self.time_input.setTime(QTime(0, 0))
+        elif self.time_format == 'hh:mm:ss':
+            parts = text.split(':')
+            if len(parts) != 3 or not all(part.isdigit() for part in parts):
+                QMessageBox.warning(self, 'Error', '올바른 시간 형식이 아닙니다. (hh:mm:ss)')
+                self.time_input.setTime(QTime(0, 0, 0))
 
     def update_spacers(self):
         # Remove old spacers if they exist
@@ -146,13 +177,7 @@ class MyApp(QMainWindow):
     def create_menu(self):
         menubar = self.menuBar()
 
-        edit_menu = menubar.addMenu('Edit')
-
-        change_stopped_bg_action = edit_menu.addAction('멈춤 상태 배경 색상 변경')
-        change_stopped_bg_action.triggered.connect(self.change_stopped_background_color)
-
-        change_running_bg_action = edit_menu.addAction('실행 상태 배경 색상 변경')
-        change_running_bg_action.triggered.connect(self.change_running_background_color)
+        edit_menu = menubar.addMenu('편집')
 
         manage_sounds_action = edit_menu.addAction('음원 설정')
         manage_sounds_action.triggered.connect(self.manage_sounds)
@@ -160,19 +185,34 @@ class MyApp(QMainWindow):
         toggle_mode_action = edit_menu.addAction('타이머/스톱워치 변경')
         toggle_mode_action.triggered.connect(self.toggle_mode)
 
-    def change_stopped_background_color(self):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.stopped_background_color = color.name()
-            if not self.timer.isActive():
-                self.update_background_color(self.stopped_background_color)
+        menubar.addMenu(edit_menu)
 
-    def change_running_background_color(self):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.running_background_color = color.name()
-            if self.timer.isActive():
-                self.update_background_color(self.running_background_color)
+        time_format_menu = menubar.addMenu('시간 형식')
+
+        self.time_format_action_group = QActionGroup(self)
+
+        mm_ss_action = QAction('mm:ss', self)
+        mm_ss_action.setCheckable(True)
+        mm_ss_action.triggered.connect(lambda: self.set_time_format('mm:ss'))
+        self.time_format_action_group.addAction(mm_ss_action)
+
+        hh_mm_ss_action = QAction('hh:mm:ss', self)
+        hh_mm_ss_action.setCheckable(True)
+        hh_mm_ss_action.triggered.connect(lambda: self.set_time_format('hh:mm:ss'))
+        self.time_format_action_group.addAction(hh_mm_ss_action)
+
+        time_format_menu.addActions(self.time_format_action_group.actions())
+
+        menubar.addMenu(time_format_menu)
+
+    def set_time_format(self, format):
+        self.time_format = format
+        if self.time_format == 'mm:ss':
+            self.time_input.setDisplayFormat("mm:ss")
+            self.time_input.setTime(QTime(0, 0))
+        else:
+            self.time_input.setDisplayFormat("HH:mm:ss")
+            self.time_input.setTime(QTime(0, 0, 0))
 
     def manage_sounds(self):
         self.sound_manager = SoundManager(self.sounds, self)
@@ -181,13 +221,13 @@ class MyApp(QMainWindow):
         self.update_alarm_sounds()
 
     def update_alarm_sounds(self):
-        self.alarm_sound_input.clear()
+        self.start_alarm_input.clear()
+        self.one_minute_before_input.clear()
+        self.end_alarm_input.clear()
         for sound in self.sounds:
-            self.alarm_sound_input.addItem(sound['name'])
-
-    def update_background_color(self, color):
-        self.current_background_color = color
-        self.timer_container.setStyleSheet(f"background-color: {color}")
+            self.start_alarm_input.addItem(sound['name'])
+            self.one_minute_before_input.addItem(sound['name'])
+            self.end_alarm_input.addItem(sound['name'])
 
     def resize_to_70_percent(self):
         desktop = QDesktopWidget().availableGeometry(self)
@@ -218,24 +258,36 @@ class MyApp(QMainWindow):
             self.start_button.setText('스톱워치 시작하기')
 
     def start_timer(self):
+        start_alarm_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.start_alarm_input.currentText()), None)
+        one_minute_before_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.one_minute_before_input.currentText()), None)
+        end_alarm_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.end_alarm_input.currentText()), None)
+
+        self.alarms = []
+        if start_alarm_sound:
+            self.alarms.append((0, start_alarm_sound))  # Trigger at the start
+        if one_minute_before_sound:
+            one_minute_before_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss")) - 60
+            self.alarms.append((one_minute_before_time, one_minute_before_sound))  # Trigger one minute before the end
+        if end_alarm_sound:
+            end_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss"))
+            self.alarms.append((end_time, end_alarm_sound))  # Trigger at the end
+
         if self.is_timer_mode:
             total_time = self.time_input.time().toString("HH:mm:ss")
             self.time_left = self.time_to_seconds(total_time)
             if self.time_left > 0:
-                if not any(alarm[0] == 0 for alarm in self.alarms):
-                    QMessageBox.warning(self, 'Error', '끝나는 시간의 알람음을 선택 해 주세요.')
-                    return
                 self.timer.start(1000)
-                self.update_background_color(self.running_background_color)
                 self.update_timer_label()
         else:
             self.elapsed_timer.start()
             self.timer.start(1000)
-            self.update_background_color(self.running_background_color)
 
     def stop_timer(self):
         self.timer.stop()
-        self.update_background_color(self.stopped_background_color)
+
+    def reset_timer(self):
+        self.time_input.setTime(QTime(0, 0) if self.time_format == 'mm:ss' else QTime(0, 0, 0))
+        self.stop_timer()
 
     def update_timer(self):
         if self.is_timer_mode:
@@ -245,10 +297,7 @@ class MyApp(QMainWindow):
                 self.check_alarms()
             else:
                 self.timer.stop()
-                self.update_background_color(self.stopped_background_color)
                 self.alert('시간이 종료되었습니다!')
-                if not any(alarm[0] == 0 for alarm in self.alarms):
-                    QMessageBox.warning(self, 'Error', '끝나는 시간의 알람을 선택 해 주세요')
         else:
             elapsed = self.elapsed_timer.elapsed() // 1000
             self.time_input.setTime(QTime(0, 0).addSecs(elapsed))
@@ -257,25 +306,6 @@ class MyApp(QMainWindow):
     def update_timer_label(self):
         time_str = self.seconds_to_time(self.time_left)
         self.time_input.setTime(QTime.fromString(time_str, "HH:mm:ss"))
-
-    def add_alarm(self):
-        alarm_time = self.alarm_time_input.time().toString("HH:mm:ss")
-        sound_name = self.alarm_sound_input.currentText()
-        sound_path = next((sound['file'] for sound in self.sounds if sound['name'] == sound_name), None)
-        if self.is_valid_time_format(alarm_time) and sound_path:
-            alarm_seconds = self.time_to_seconds(alarm_time)
-            self.alarms.append((alarm_seconds, sound_path))
-            alarm_item = QListWidgetItem(f'끝나는 시간: {alarm_time}, 음원: {sound_name}')
-            alarm_item.setData(Qt.UserRole, (alarm_seconds, sound_path))
-            self.alarm_list.addItem(alarm_item)
-
-        else:
-            QMessageBox.warning(self, 'Error', '음원 파일을 제공 해 주세요.')
-
-    def remove_alarm(self, item):
-        row = self.alarm_list.row(item)
-        self.alarm_list.takeItem(row)
-        self.alarms.pop(row)
 
     def check_alarms(self):
         for alarm_time, sound_path in self.alarms:
@@ -305,6 +335,11 @@ class MyApp(QMainWindow):
             return True
         except:
             return False
+
+    def remove_alarm(self, item):
+        row = self.alarm_list.row(item)
+        self.alarm_list.takeItem(row)
+        self.alarms.pop(row)
 
 
 class SoundManager(QDialog):
@@ -346,7 +381,11 @@ class SoundManager(QDialog):
         if ok and name:
             file, _ = QFileDialog.getOpenFileName(self, '음원 파일 열기', '', '음원 파일 (*.mp3 *.wav)')
             if file:
-                self.sounds.append({'이름': name, '파일': file})
+                destination = os.path.join(self.parent().user_sounds_folder, os.path.basename(file))
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                if not os.path.exists(destination):
+                    shutil.copy(file, destination)
+                self.sounds.append({'name': name, 'file': destination})
                 self.update_sound_list()
 
     def edit_sound(self):
@@ -358,7 +397,11 @@ class SoundManager(QDialog):
             if ok and name:
                 file, _ = QFileDialog.getOpenFileName(self, '음원파일 열기', '', '음원파일 (*.mp3 *.wav)')
                 if file:
-                    self.sounds[current_row] = {'name': name, 'file': file}
+                    destination = os.path.join(self.parent().user_sounds_folder, os.path.basename(file))
+                    os.makedirs(os.path.dirname(destination), exist_ok=True)
+                    if not os.path.exists(destination):
+                        shutil.copy(file, destination)
+                    self.sounds[current_row] = {'name': name, 'file': destination}
                     self.update_sound_list()
 
     def delete_sound(self):
@@ -371,6 +414,5 @@ class SoundManager(QDialog):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = MyApp()
-    # sys.exit(app.exec_())
     ex.show()
     app.exec_()
