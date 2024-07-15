@@ -71,13 +71,38 @@ class MyApp(QMainWindow):
 
         # Create the timer container with the specified background color
         self.timer_container = QWidget(self.centralWidget)
+        self.timer_container.setStyleSheet("background-color: black;")
         self.timer_container_layout = QVBoxLayout(self.timer_container)
 
         self.time_input = QTimeEdit(QTime(0, 0, 0), self.timer_container)
         self.time_input.setAlignment(Qt.AlignCenter)
         self.time_input.setDisplayFormat("HH:mm:ss")
-        self.time_input.setStyleSheet("font-size: 300px; height: 300px; background-color: black; color: red;")
-        self.time_input.setFixedHeight(300)  # Fix the height to 100px
+        # self.time_input.setStyleSheet("font-size: 300px; height: 300px; background-color: black; color: red;")
+        self.time_input.setStyleSheet("""
+            QTimeEdit {
+                font-size: 300px; 
+                height: 100%; 
+                background-color: black; 
+                color: red;
+            }
+            QTimeEdit::up-button {
+                width: 30px;
+                height: 30px;
+            }
+            QTimeEdit::down-button {
+                width: 30px;
+                height: 30px;
+            }
+            QTimeEdit::up-arrow {
+                width: 20px;
+                height: 20px;
+            }
+            QTimeEdit::down-arrow {
+                width: 20px;
+                height: 20px;
+            }
+        """)
+        self.time_input.setFixedHeight(300)
         self.set_time_format(self.time_format)
 
         # Add the time input to the timer container layout and center it
@@ -128,10 +153,11 @@ class MyApp(QMainWindow):
 
         self.update_alarm_sounds()  # Populate the alarm sounds combo boxes
 
-        self.alarm_list = QListWidget(self)
-        self.alarm_list.setStyleSheet("font-size: 20px;")
-        self.alarm_list.itemDoubleClicked.connect(self.remove_alarm)
-        self.main_layout.addWidget(self.alarm_list)
+        # 하단 네모박스 생성
+        # self.alarm_list = QListWidget(self)
+        # self.alarm_list.setStyleSheet("font-size: 20px;")
+        # self.alarm_list.itemDoubleClicked.connect(self.remove_alarm)
+        # self.main_layout.addWidget(self.alarm_list)
 
         self.setWindowTitle('카운트다운 알람')
         self.resize_to_70_percent()
