@@ -1,14 +1,12 @@
 import sys
-import threading
 import json
 import os
-import shutil  # Importing shutil for file operations
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QTimeEdit, QComboBox, QListWidget, QListWidgetItem, QMessageBox, QDesktopWidget,
-                             QSpacerItem, QSizePolicy, QMenuBar, QColorDialog, QLineEdit, QFileDialog, QInputDialog,
-                             QDialog, QAction, QActionGroup)
-from PyQt5.QtCore import QTimer, Qt, QTime, QElapsedTimer, QStandardPaths
 import pygame
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QTimeEdit, QComboBox, QSpacerItem, QSizePolicy, QDesktopWidget, QMessageBox, QActionGroup, QAction)
+from PyQt5.QtCore import QTimer, Qt, QTime, QElapsedTimer, QStandardPaths
+
+from sound import SoundManager
 
 def resource_path(relative_path):
     """개발 및 PyInstaller에 대해 리소스의 절대 경로를 가져옵니다."""
@@ -18,16 +16,18 @@ def resource_path(relative_path):
 class MyApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        pygame.mixer.init()  # Initialize the mixer module for pygame
+        pygame.mixer.init()
+        if not pygame.mixer.get_init():
+            print("Pygame mixer initialization failed!")
+        else:
+            print("Pygame mixer initialized successfully.")
         self.background_color = 'black'
         self.text_color = 'red'
         self.sounds = []
-        self.sounds_file = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "sounds.json")  # Updated path
-        # self.default_sounds_folder = os.path.join(os.path.dirname(__file__), "sounds")  # Default sounds folder
-        self.default_sounds_folder = resource_path("sounds")
-        self.user_sounds_folder = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "user_sounds")  # User sounds folder
+        self.sounds_file = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "sounds.json")
+        self.user_sounds_folder = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "user_sounds")
         self.is_timer_mode = True
-        self.setup_sound_folders()  # Set up sound folders
+        self.setup_sound_folders()
         self.load_sounds()
         self.time_format = 'mm:ss'
         self.initUI()
@@ -37,23 +37,11 @@ class MyApp(QMainWindow):
             os.makedirs(self.user_sounds_folder)
 
     def load_sounds(self):
-        # Load existing sounds from JSON file
         if os.path.exists(self.sounds_file):
             with open(self.sounds_file, 'r') as f:
                 self.sounds = json.load(f)
         else:
             self.sounds = []
-
-        # Load default sounds from the default sounds folder
-        if os.path.exists(self.default_sounds_folder):
-            for file_name in os.listdir(self.default_sounds_folder):
-                if file_name.endswith(('.mp3', '.wav')):
-                    sound_name = os.path.splitext(file_name)[0]
-                    sound_file_path = os.path.join(self.default_sounds_folder, file_name)
-                    if not any(sound['file'] == sound_file_path for sound in self.sounds):
-                        self.sounds.append({'name': sound_name, 'file': sound_file_path})
-
-        self.save_sounds()
 
     def save_sounds(self):
         with open(self.sounds_file, 'w') as f:
@@ -69,7 +57,6 @@ class MyApp(QMainWindow):
 
         self.main_layout = QVBoxLayout(self.centralWidget)
 
-        # Create the timer container with the specified background color
         self.timer_container = QWidget(self.centralWidget)
         self.timer_container.setStyleSheet("background-color: black;")
         self.timer_container_layout = QVBoxLayout(self.timer_container)
@@ -77,7 +64,6 @@ class MyApp(QMainWindow):
         self.time_input = QTimeEdit(QTime(0, 0, 0), self.timer_container)
         self.time_input.setAlignment(Qt.AlignCenter)
         self.time_input.setDisplayFormat("HH:mm:ss")
-        # self.time_input.setStyleSheet("font-size: 300px; height: 300px; background-color: black; color: red;")
         self.time_input.setStyleSheet("""
             QTimeEdit {
                 font-size: 300px; 
@@ -105,9 +91,7 @@ class MyApp(QMainWindow):
         self.time_input.setFixedHeight(300)
         self.set_time_format(self.time_format)
 
-        # Add the time input to the timer container layout and center it
         self.update_spacers()
-
         self.main_layout.addWidget(self.timer_container)
 
         self.control_layout = QHBoxLayout()
@@ -151,13 +135,7 @@ class MyApp(QMainWindow):
 
         self.main_layout.addLayout(self.alarm_layout)
 
-        self.update_alarm_sounds()  # Populate the alarm sounds combo boxes
-
-        # 하단 네모박스 생성
-        # self.alarm_list = QListWidget(self)
-        # self.alarm_list.setStyleSheet("font-size: 20px;")
-        # self.alarm_list.itemDoubleClicked.connect(self.remove_alarm)
-        # self.main_layout.addWidget(self.alarm_list)
+        self.update_alarm_sounds()
 
         self.setWindowTitle('카운트다운 알람')
         self.resize_to_70_percent()
@@ -181,7 +159,6 @@ class MyApp(QMainWindow):
                 self.time_input.setTime(QTime(0, 0, 0))
 
     def update_spacers(self):
-        # Remove old spacers if they exist
         if hasattr(self, 'top_spacer'):
             self.timer_container_layout.removeItem(self.top_spacer)
         if hasattr(self, 'bottom_spacer'):
@@ -190,7 +167,6 @@ class MyApp(QMainWindow):
         desktop = QDesktopWidget().availableGeometry(self)
         screen_height = desktop.height()
 
-        # Calculate new spacer heights
         spacer_height = (screen_height - 100) / 2
 
         self.top_spacer = QSpacerItem(20, int(spacer_height), QSizePolicy.Minimum, QSizePolicy.Expanding)
@@ -260,10 +236,10 @@ class MyApp(QMainWindow):
         screen_width = desktop.width()
         screen_height = desktop.height()
         self.setGeometry(
-            int(screen_width * 0.15),  # x position
-            int(screen_height * 0.15),  # y position
-            int(screen_width * 0.7),  # width
-            int(screen_height * 0.7)  # height
+            int(screen_width * 0.15),
+            int(screen_height * 0.15),
+            int(screen_width * 0.7),
+            int(screen_height * 0.7)
         )
         self.center()
         self.update_spacers()
@@ -290,13 +266,14 @@ class MyApp(QMainWindow):
 
         self.alarms = []
         if start_alarm_sound:
-            self.alarms.append((0, start_alarm_sound))  # Trigger at the start
+            self.alarms.append((0, start_alarm_sound))
         if one_minute_before_sound:
             one_minute_before_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss")) - 60
-            self.alarms.append((one_minute_before_time, one_minute_before_sound))  # Trigger one minute before the end
+            if one_minute_before_time >= 0:
+                self.alarms.append((one_minute_before_time, one_minute_before_sound))
         if end_alarm_sound:
             end_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss"))
-            self.alarms.append((end_time, end_alarm_sound))  # Trigger at the end
+            self.alarms.append((end_time, end_alarm_sound))
 
         if self.is_timer_mode:
             total_time = self.time_input.time().toString("HH:mm:ss")
@@ -304,9 +281,11 @@ class MyApp(QMainWindow):
             if self.time_left > 0:
                 self.timer.start(1000)
                 self.update_timer_label()
+                self.check_alarms()
         else:
             self.elapsed_timer.start()
             self.timer.start(1000)
+            self.check_alarms()
 
     def stop_timer(self):
         self.timer.stop()
@@ -323,7 +302,7 @@ class MyApp(QMainWindow):
                 self.check_alarms()
             else:
                 self.timer.stop()
-                self.alert('시간이 종료되었습니다!')
+                # self.alert('시간이 종료되었습니다!')
         else:
             elapsed = self.elapsed_timer.elapsed() // 1000
             self.time_input.setTime(QTime(0, 0).addSecs(elapsed))
@@ -334,14 +313,27 @@ class MyApp(QMainWindow):
         self.time_input.setTime(QTime.fromString(time_str, "HH:mm:ss"))
 
     def check_alarms(self):
-        for alarm_time, sound_path in self.alarms:
-            if (self.is_timer_mode and self.time_left == alarm_time) or (
-                    not self.is_timer_mode and self.elapsed_timer.elapsed() // 1000 == alarm_time):
-                threading.Thread(target=self.play_sound, args=(sound_path,)).start()
+        if self.is_timer_mode:
+            for time_point, sound_path in self.alarms:
+                if self.time_left == time_point:
+                    self.play_sound(sound_path)
+        else:
+            elapsed = self.elapsed_timer.elapsed() // 1000
+            for time_point, sound_path in self.alarms:
+                if elapsed == time_point:
+                    self.play_sound(sound_path)
+
+    def get_sound_path(self, sound_name):
+        sound = next((sound for sound in self.sounds if sound['name'] == sound_name), None)
+        return sound['file'] if sound else None
 
     def play_sound(self, sound_path):
-        pygame.mixer.music.load(sound_path)
-        pygame.mixer.music.play()
+        if sound_path:
+            try:
+                pygame.mixer.music.load(sound_path)
+                pygame.mixer.music.play()
+            except pygame.error as e:
+                print(f"Error playing sound: {e}")
 
     def alert(self, message):
         QMessageBox.information(self, 'Alert', message)
@@ -361,81 +353,6 @@ class MyApp(QMainWindow):
             return True
         except:
             return False
-
-    def remove_alarm(self, item):
-        row = self.alarm_list.row(item)
-        self.alarm_list.takeItem(row)
-        self.alarms.pop(row)
-
-
-class SoundManager(QDialog):
-    def __init__(self, sounds, parent=None):
-        super().__init__(parent)
-        self.sounds = sounds
-        self.setWindowTitle('사운드 메니저')
-        self.setGeometry(100, 100, 600, 400)
-        self.setLayout(QVBoxLayout())
-
-        self.sound_list = QListWidget(self)
-        self.sound_list.setStyleSheet("font-size: 20px;")
-        self.update_sound_list()
-        self.layout().addWidget(self.sound_list)
-
-        self.control_layout = QHBoxLayout()
-
-        self.add_button = QPushButton('음원 추가하기', self)
-        self.add_button.clicked.connect(self.add_sound)
-        self.control_layout.addWidget(self.add_button)
-
-        self.edit_button = QPushButton('음원 편집하기', self)
-        self.edit_button.clicked.connect(self.edit_sound)
-        self.control_layout.addWidget(self.edit_button)
-
-        self.delete_button = QPushButton('음원 삭제하기', self)
-        self.delete_button.clicked.connect(self.delete_sound)
-        self.control_layout.addWidget(self.delete_button)
-
-        self.layout().addLayout(self.control_layout)
-
-    def update_sound_list(self):
-        self.sound_list.clear()
-        for sound in self.sounds:
-            self.sound_list.addItem(f"이름: {sound['name']}, 파일: {sound['file']}")
-
-    def add_sound(self):
-        name, ok = QInputDialog.getText(self, '음원 이름', '입력된 음원 이름:')
-        if ok and name:
-            file, _ = QFileDialog.getOpenFileName(self, '음원 파일 열기', '', '음원 파일 (*.mp3 *.wav)')
-            if file:
-                destination = os.path.join(self.parent().user_sounds_folder, os.path.basename(file))
-                os.makedirs(os.path.dirname(destination), exist_ok=True)
-                if not os.path.exists(destination):
-                    shutil.copy(file, destination)
-                self.sounds.append({'name': name, 'file': destination})
-                self.update_sound_list()
-
-    def edit_sound(self):
-        current_row = self.sound_list.currentRow()
-        if current_row >= 0:
-            current_sound = self.sounds[current_row]
-            name, ok = QInputDialog.getText(self, '음원파일 이름 변경', '새로운 음원파일 이름:',
-                                            text=current_sound['name'])
-            if ok and name:
-                file, _ = QFileDialog.getOpenFileName(self, '음원파일 열기', '', '음원파일 (*.mp3 *.wav)')
-                if file:
-                    destination = os.path.join(self.parent().user_sounds_folder, os.path.basename(file))
-                    os.makedirs(os.path.dirname(destination), exist_ok=True)
-                    if not os.path.exists(destination):
-                        shutil.copy(file, destination)
-                    self.sounds[current_row] = {'name': name, 'file': destination}
-                    self.update_sound_list()
-
-    def delete_sound(self):
-        current_row = self.sound_list.currentRow()
-        if current_row >= 0:
-            del self.sounds[current_row]
-            self.update_sound_list()
-
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
