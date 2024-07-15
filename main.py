@@ -35,11 +35,19 @@ class MyApp(QMainWindow):
     def setup_sound_folders(self):
         if not os.path.exists(self.user_sounds_folder):
             os.makedirs(self.user_sounds_folder)
+        if not os.path.exists(self.sounds_file):
+            with open(self.sounds_file, 'w') as f:
+                json.dump([], f)  # 빈 리스트를 저장하여 기본 구조 생성
 
     def load_sounds(self):
         if os.path.exists(self.sounds_file):
-            with open(self.sounds_file, 'r') as f:
-                self.sounds = json.load(f)
+            try:
+                with open(self.sounds_file, 'r') as f:
+                    self.sounds = json.load(f)
+                    if not self.sounds:  # 파일이 비어있다면, 빈 리스트로 초기화
+                        self.sounds = []
+            except json.JSONDecodeError:
+                self.sounds = []
         else:
             self.sounds = []
 
@@ -265,12 +273,14 @@ class MyApp(QMainWindow):
         end_alarm_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.end_alarm_input.currentText()), None)
 
         self.alarms = []
+        self.one_minute_before_alarm = None
+
         if start_alarm_sound:
             self.alarms.append((0, start_alarm_sound))
         if one_minute_before_sound:
             one_minute_before_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss")) - 60
             if one_minute_before_time >= 0:
-                self.alarms.append((one_minute_before_time, one_minute_before_sound))
+                self.one_minute_before_alarm = (one_minute_before_time, one_minute_before_sound)
         if end_alarm_sound:
             end_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss"))
             self.alarms.append((end_time, end_alarm_sound))
@@ -317,11 +327,17 @@ class MyApp(QMainWindow):
             for time_point, sound_path in self.alarms:
                 if self.time_left == time_point:
                     self.play_sound(sound_path)
+            # 1분 전 알람 확인
+            if self.time_left == 60 and self.one_minute_before_alarm:
+                self.play_sound(self.one_minute_before_alarm[1])
         else:
             elapsed = self.elapsed_timer.elapsed() // 1000
             for time_point, sound_path in self.alarms:
                 if elapsed == time_point:
                     self.play_sound(sound_path)
+            # 1분 전 알람 확인
+            if self.one_minute_before_alarm and elapsed == self.one_minute_before_alarm[0]:
+                self.play_sound(self.one_minute_before_alarm[1])
 
     def get_sound_path(self, sound_name):
         sound = next((sound for sound in self.sounds if sound['name'] == sound_name), None)
