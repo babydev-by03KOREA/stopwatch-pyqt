@@ -31,6 +31,7 @@ class MyApp(QMainWindow):
         self.load_sounds()
         self.time_format = 'mm:ss'
         self.initUI()
+        self.played_alarms = set()  # 재생된 알람을 추적하기 위한 집합
 
     def setup_sound_folders(self):
         if not os.path.exists(self.user_sounds_folder):
@@ -112,6 +113,11 @@ class MyApp(QMainWindow):
         self.stop_button.setStyleSheet("font-size: 30px;")
         self.stop_button.clicked.connect(self.stop_timer)
         self.control_layout.addWidget(self.stop_button)
+
+        self.reset_button = QPushButton('리셋', self)
+        self.reset_button.setStyleSheet("font-size: 30px; color: black; background-color: white;")
+        self.reset_button.clicked.connect(self.reset_timer)
+        self.control_layout.addWidget(self.reset_button)
 
         self.main_layout.addLayout(self.control_layout)
 
@@ -268,37 +274,24 @@ class MyApp(QMainWindow):
             self.start_button.setText('스톱워치 시작하기')
 
     def start_timer(self):
-        start_alarm_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.start_alarm_input.currentText()), None)
-        one_minute_before_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.one_minute_before_input.currentText()), None)
-        end_alarm_sound = next((sound['file'] for sound in self.sounds if sound['name'] == self.end_alarm_input.currentText()), None)
-
-        self.alarms = []
-        self.one_minute_before_alarm = None
-
-        if start_alarm_sound:
-            self.alarms.append((0, start_alarm_sound))
-        if one_minute_before_sound:
-            one_minute_before_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss")) - 60
-            if one_minute_before_time >= 0:
-                self.one_minute_before_alarm = (one_minute_before_time, one_minute_before_sound)
-        if end_alarm_sound:
-            end_time = self.time_to_seconds(self.time_input.time().toString("HH:mm:ss"))
-            self.alarms.append((end_time, end_alarm_sound))
-
         if self.is_timer_mode:
-            total_time = self.time_input.time().toString("HH:mm:ss")
+            total_time = self.time_input.text()
             self.time_left = self.time_to_seconds(total_time)
+            self.saved_time = total_time  # 저장된 시간을 업데이트
             if self.time_left > 0:
+                if not self.end_alarm_input.currentText():
+                    QMessageBox.warning(self, 'Error', '끝나는 시간의 알람음을 선택 해 주세요.')
+                    return
                 self.timer.start(1000)
                 self.update_timer_label()
-                self.check_alarms()
+                self.play_sound(self.start_alarm_input.currentText())  # 시작 알람 울리기
         else:
             self.elapsed_timer.start()
             self.timer.start(1000)
-            self.check_alarms()
 
     def stop_timer(self):
         self.timer.stop()
+        self.enable_alarm_inputs()  # 알람 입력 활성화
 
     def reset_timer(self):
         self.time_input.setTime(QTime(0, 0) if self.time_format == 'mm:ss' else QTime(0, 0, 0))
@@ -312,6 +305,7 @@ class MyApp(QMainWindow):
                 self.check_alarms()
             else:
                 self.timer.stop()
+                self.enable_alarm_inputs()  # 타이머가 종료되면 알람 입력 활성화
                 # self.alert('시간이 종료되었습니다!')
         else:
             elapsed = self.elapsed_timer.elapsed() // 1000
@@ -324,39 +318,51 @@ class MyApp(QMainWindow):
 
     def check_alarms(self):
         if self.is_timer_mode:
-            for time_point, sound_path in self.alarms:
-                if self.time_left == time_point:
-                    self.play_sound(sound_path)
-            # 1분 전 알람 확인
-            if self.time_left == 60 and self.one_minute_before_alarm:
-                self.play_sound(self.one_minute_before_alarm[1])
+            if self.time_left == 60:  # 1분 전
+                self.play_sound(self.one_minute_before_input.currentText())
+            elif self.time_left == 0:  # 타이머 종료
+                self.play_sound(self.end_alarm_input.currentText())
         else:
             elapsed = self.elapsed_timer.elapsed() // 1000
-            for time_point, sound_path in self.alarms:
-                if elapsed == time_point:
-                    self.play_sound(sound_path)
-            # 1분 전 알람 확인
-            if self.one_minute_before_alarm and elapsed == self.one_minute_before_alarm[0]:
-                self.play_sound(self.one_minute_before_alarm[1])
+            if elapsed % 60 == 0 and elapsed != 0:  # 1분마다
+                self.play_sound(self.one_minute_before_input.currentText())
+            elif elapsed == 0:  # 스톱워치 종료
+                self.play_sound(self.end_alarm_input.currentText())
 
     def get_sound_path(self, sound_name):
         sound = next((sound for sound in self.sounds if sound['name'] == sound_name), None)
-        return sound['file'] if sound else None
+        if sound:
+            return sound['file']
+        return None
 
-    def play_sound(self, sound_path):
+    def play_sound(self, sound_name):
+        sound_path = self.get_sound_path(sound_name)
         if sound_path:
             try:
+                print(f"Playing sound: {sound_path}")
+                if pygame.mixer.music.get_busy():
+                    pygame.mixer.music.stop()  # 현재 재생 중인 소리를 멈추고 새 소리를 재생
                 pygame.mixer.music.load(sound_path)
                 pygame.mixer.music.play()
             except pygame.error as e:
                 print(f"Error playing sound: {e}")
+        else:
+            print(f"Sound not found for name: {sound_name}")
+
 
     def alert(self, message):
         QMessageBox.information(self, 'Alert', message)
 
     def time_to_seconds(self, time_str):
-        h, m, s = map(int, time_str.split(':'))
-        return h * 3600 + m * 60 + s
+        parts = time_str.split(':')
+        if len(parts) == 2:
+            m, s = map(int, parts)
+            return m * 60 + s
+        elif len(parts) == 3:
+            h, m, s = map(int, parts)
+            return h * 3600 + m * 60 + s
+        else:
+            raise ValueError("Invalid time format")
 
     def seconds_to_time(self, seconds):
         h, remainder = divmod(seconds, 3600)
@@ -369,6 +375,16 @@ class MyApp(QMainWindow):
             return True
         except:
             return False
+
+    def disable_alarm_inputs(self):
+        self.start_alarm_input.setEnabled(False)
+        self.one_minute_before_input.setEnabled(False)
+        self.end_alarm_input.setEnabled(False)
+
+    def enable_alarm_inputs(self):
+        self.start_alarm_input.setEnabled(True)
+        self.one_minute_before_input.setEnabled(True)
+        self.end_alarm_input.setEnabled(True)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
